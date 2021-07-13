@@ -1,0 +1,968 @@
+Data Analysis in R
+========================================================
+author: Liz Chin, adapted from Alejandro Schuler & Steve Bagley and based on R for Data Science by Hadley Wickham
+date: 2021
+transition: none
+width: 1680
+height: 1050
+
+- filter rows of a dataset based on conditions
+- arrange rows of a dataset based on one or more columns
+- select columns of a dataset
+- mutate existing columns to create new columns
+- group and summarize data by one or more columns
+- use the pipe to combine multiple operations
+- combine multiple data frames using joins on one or more columns
+
+```{r include=FALSE}
+## better font size for slides
+library(tidyverse)
+library(knitr)
+
+hook_output_default <- knitr::knit_hooks$get('output')
+
+truncate_to_lines <- function(x, n) {
+   if (!is.null(n)) {
+      x = unlist(stringr::str_split(x, '\n'))
+      if (length(x) > n) {
+         # truncate the output
+         x = c(head(x, n), '...\n')
+      }
+      x = paste(x, collapse = '\n') # paste first n lines together
+   }
+   x
+}
+
+# save the built-in output hook
+knitr::knit_hooks$set(output = function(x, options) {
+   max.lines <- options$max.lines
+   x <- truncate_to_lines(x, max.lines)
+
+   hook_output_default(x, options)
+})
+#theme_set(theme_grey(base_size = 22))
+opts_chunk$set(collapse=TRUE,tidy=TRUE,prompt=FALSE,comment=NA,cache=FALSE)
+opts_chunk$set(error=TRUE,warning=TRUE,message=TRUE)
+```
+
+<style>
+.small-code pre code {
+  font-size: 0.5em;
+}
+</style>
+
+
+
+dplyr
+========================================================
+This section shows the basic data frame functions ("verbs") in the `dplyr` package (part of `tidyverse`).
+
+<div align="center">
+  <img src="https://d33wubrfki0l68.cloudfront.net/621a9c8c5d7b47c4b6d72e8f01f28d14310e8370/193fc/css/images/hex/dplyr.png"; style="max-width:500px;"; class="center">
+</div>
+
+dplyr verbs
+========================================================
+Each operation takes a data frame and produces a new data frame.
+
+- `filter()` picks out rows according to specified conditions
+- `select()` picks out columns according to their names
+- `arrange()` sorts the row by values in some column(s)
+- `mutate()` creates new columns, often based on operations on other columns
+- `summarize()` collapses many values in one or more columns down to one value per column
+
+These can all be used in conjunction with `group_by()` which changes the scope of each function from operating on the entire dataset to operating on it group-by-group. These six functions provide the "verbs" for a language of data manipulation.
+
+All work similarly:
+
+1. The first argument is a data frame.
+2. The subsequent arguments describe what to do with the data frame, using the variable names (without quotes).
+3. The result is a new data frame.
+
+Together these properties make it easy to chain together multiple simple steps to achieve a complex result. 
+
+Incarceration data
+===
+This is the daily incarcerated population in NYC jails
+
+- **The full dataset.** Daily incarcerated population in custody with attributes (custody level, mental health designation, race, gender, age, etc.). 
+- **Simulated zipcodes.** Zipcodes are simulated based on racial demographics of zip codes in NYC.
+- **Additional details** Data dictionary and additional details are available at https://data.cityofnewyork.us/Public-Safety/Daily-Inmates-In-Custody
+- **Goal.** We will use the data here to illustrate different functions for data transformation.
+
+
+```{r, message=F}
+load("~/Downloads/jail_data.rda")
+
+# Check number of rows
+glimpse(jail_data)
+```
+
+Filter rows with filter()
+====
+type: section
+
+Filter rows with filter()
+========================================================
+- `filter()` lets you filter out rows of a dataset that meet a certain condition
+- It takes two arguments: the dataset and the condition
+
+```{r, message=F}
+filter(jail_data, AGE >= 65)
+```
+
+Exercise
+========================================================
+- What is the result of running this code?
+
+```{r}
+nrow(jail_data)
+```
+
+```{r, eval=F}
+filter(jail_data, AGE >= 65)
+nrow(jail_data)
+```
+
+- Remember, functions usually do not change their arguments!
+
+```{r}
+people65plus = filter(jail_data, AGE >= 65)
+nrow(people65plus)
+white65plus = filter(people65plus, RACE == "W")
+nrow(white65plus)
+```
+
+Combining constraints in filter
+========================================================
+```{r}
+filter(jail_data, AGE >= 65, RACE == "W")
+```
+- This filters by the **conjunction** of the two constraints---both must be satisfied.
+- Constraints appear as second (and third...) arguments, separated by commas.
+
+
+Filtering out all rows
+=========================================================
+```{r}
+filter(jail_data, AGE >= 65, GENDER == "F")
+```
+- If the constraint is too severe, then you will select **no** rows, and produce a zero row sized tibble.
+
+Comparison operators
+=========================================================
+- `==` and `!=` test for equality and inequality (do not use `=` for equality)
+- `>` and `<` test for greater-than and less-than
+- `>=` and `<=` are greater-than-or-equal and less-than-or-equal
+- these can also be used directly on vectors outside of data frames
+```{r}
+c(1,5,-22,4) > 0
+```
+
+Aside: computers are not perfect, so be careful with checking equality
+===
+```{r}
+sqrt(2) ^ 2 == 2
+1 / 49 * 49 == 1
+```
+
+You can use `near()` to check that two numbers are the same (up to "machine precision")
+```{r}
+near(sqrt(2) ^ 2,  2)
+near(1 / 49 * 49, 1)
+```
+
+Comparing to NA
+===
+- The other "gotcha" is that  `==`  cannot be used to compare to `NA`:
+```{r}
+x = NA
+x == NA
+```
+- The result actually makes sense though, because I'm asking if "I don't know" is the same as "I don't know". Since either side could be any value, the right answer is "I don't know".
+- To check if something is `NA`, use `is.na()`
+```{r}
+x = NA
+is.na(x)
+```
+
+Logical conjunctions
+=========================================================
+```{r}
+filter(jail_data, CUSTODY_LEVEL == "MIN" | AGE >= 65)
+```
+- The pipe sign ` | ` stands for "OR" 
+- The ampersand sign ` & ` stands for "AND"
+- As we have seen, separating conditions by a comma is the same as using ` & ` inside `filter()`
+- Multiple conjunctions can describe complex logical conditions
+
+Logical conjunctions
+=========================================================
+```{r}
+filter(jail_data, !(CUSTODY_LEVEL == "MIN" | AGE >= 65))
+```
+- The exclamation point ` ! ` means "NOT", which negates the logical condition
+
+Logical conjunctions
+=========================================================
+```{r}
+filter(jail_data, RACE %in% c("W","B"))
+```
+- ` %in% ` returns true for all elements of the thing on the left that are also elements of the thing on the right. This is actually shorthand for a match function (use `help('%in%')` to learn more)
+
+
+**Caution!** `in` (without the flanking percent signs) has a different meaning - it is used to iterate through a sequence rather than as a matching function. For example, to loop through and print all numbers from 1 to 10 we would do the following:
+
+```
+for(x in seq(1,10)){ print x }
+``` 
+
+Exercise: Potential releases during Covid-19
+==========================================================
+type: prompt
+
+- Create a dataset of people 65 and older with a minimum security custody level
+
+```{r}
+filter(jail_data, AGE >= 65, CUSTODY_LEVEL == "MIN")
+```
+
+Exercise: Potential releases during Covid-19 II
+==========================================================
+type: prompt
+
+- Create a dataset of people 65 and older with a minimum security custody level or no infractions
+
+```{r}
+filter(jail_data, AGE >= 65, CUSTODY_LEVEL == "MIN" | INFRACTION == "N")
+```
+
+
+Exercise: getting rid of NAs
+==========================================================
+type: prompt
+
+- Filter out any rows where the value for `RACE` is missing (value is `NA`) 
+
+Exercise: getting rid of NAs
+==========================================================
+type: prompt
+
+- Filter out any rows where the value for `RACE` is missing (value is `NA`) 
+
+```{r}
+filter(jail_data, !is.na(RACE))
+```
+
+
+Filtering by row number
+==========================================================
+
+- Use `row_number()` to filter specific rows. This is more useful once you have sorted the data in a particular order, which we will soon see how to do.
+
+```{r}
+filter(jail_data, row_number()<=3)
+```
+
+
+Sampling rows
+==========================================================
+- You can use `sample_n()` to get `n` randomly selected rows if you don't have a particular condition you would like to filter on.
+
+```{r}
+sample_n(jail_data, 5)
+```
+
+- `sample_frac()` is similar
+- Do `?sample_n()` to see how you can sample with replacement or with weights
+
+Sort rows by a column with arrange()
+===
+type:section
+
+Arrange rows with arrange()
+===========================================================
+- `arrange()` takes a data frame and a column, and sorts the rows by the values in that column (ascending order).
+- Again, the first argument is the data frame and the other arguments tell the function what to do with it
+```{r}
+arrange(jail_data, ADMITTED_DT)
+```
+
+Arrange can sort by more than one column
+===========================================================
+- This is useful if there is a tie in sorting by the first column.
+
+```{r}
+arrange(jail_data, ADMITTED_DT, AGE)
+```
+
+
+Use the desc function to arrange by descending values
+===========================================================
+
+```{r}
+arrange(jail_data, desc(AGE))
+```
+
+Exercise: top 5 oldest people
+===========================================================
+type:prompt
+
+Use `arrange()` and `filter()` to get the data for the 5 oldest individuals
+
+Exercise: top 5 oldest people
+===========================================================
+type:prompt
+
+Use `arrange()` and `filter()` to get the data for the 5 oldest individuals
+
+```{r}
+filter(arrange(jail_data, desc(AGE)), row_number()<=5) # "nesting" the calls to filter and arrange
+```
+
+Exercise: top 5 oldest people
+===========================================================
+type:prompt
+
+Use `arrange()` and `filter()` to get the data for the 5 oldest individuals
+
+```{r}
+filter(arrange(jail_data, desc(AGE)), row_number()<=5) # "nesting" the calls to filter and arrange
+```
+or
+```{r}
+jail_by_age = arrange(jail_data, desc(AGE)) # using a temporary variable
+filter(jail_by_age, row_number()<=5)
+```
+
+Select columns with select()
+===
+type:section
+
+Select columns with select()
+=========================================================
+```{r}
+select(jail_data, ADMITTED_DT, AGE, RACE, GENDER)
+```
+- The select function will return a subset of the tibble, using only the requested columns in the order specified.
+
+Select columns with select()
+=========================================================
+- `select()` can also be used with handy helpers like `starts_with()` and `contains()`
+
+```{r}
+select(jail_data, starts_with("I"))
+```
+- Use `?select` to see all the possibilities
+
+Select columns with select()
+=========================================================
+```{r}
+select(jail_data, contains("I"))
+```
+- The quotes around the letter `"I"` make it a string. If we did not do this, `R` would think it was looking for a variable called `I` and not just the plain letter.
+- We don't have to quote the names of columns (like `Ind`) because the `tidyverse` functions know that we are working within the dataframe and thus treat the column names like they are variables in their own right
+
+select() subsets columns by name
+=========================================================
+- `select()` can also be used to select everything **except for** certain columns
+```{r}
+select(jail_data, -starts_with(c("I","S")), -DISCHARGED_DT)
+```
+
+select() subsets columns by name
+=========================================================
+- or even to select only columns that match a certain condition
+
+```{r}
+select(jail_data, where(is.numeric))
+```
+
+pull() is a friend of select()
+=========================================================
+- `select()` has a friend called `pull()` which returns a vector instead of a (one-column) data frame
+```{r}
+select(jail_data, AGE)
+```
+
+```{r max.lines = 5}
+pull(jail_data, AGE)
+```
+
+
+Rename column names with rename()
+=========================================================
+- `rename()`
+```{r max.lines = 6}
+rename(jail_data, age = AGE)
+```
+
+Note: `mutate()`, can also change a column name (more on `mutate()` soon)
+
+
+Exercise: select and filter
+===
+type:prompt
+
+- Create a one-column dataframe of the race or ethnic groups of all individuals under 45 years old and female.
+
+Exercise: select and filter
+===
+type:prompt
+
+- Create a one-column dataframe of the race or ethnic groups of all individuals under 45 years old and female.
+
+```{r max.lines = 10}
+select(filter(jail_data, AGE < 45, GENDER == "F"), RACE)
+```
+
+Exercise: select text columns
+===
+type:prompt
+
+- Use select to subset the `jail_data` dataframe to just those columns that contain text data. 
+- Can you do this programmatically without specifying the names of each of the desired columns? 
+- Which base R function will help you determine if a column is textual or not? Use whatever tools you want to find out.
+
+Exercise: select text columns
+===
+type:prompt
+
+- Use select to subset the `jail_data` dataframe to just those columns that contain text data. 
+- Can you do this programmatically without specifying the names of each of the desired columns? 
+- Which base R function will help you determine if a column is textual or not? Use whatever tools you want to find out.
+
+```{r}
+select(jail_data, where(is.character))
+```
+
+Add new variables with mutate()
+===
+type:section
+
+Add new variables with mutate()
+================================================================
+```{r, max.lines = 5}
+mutate(jail_data, min_custody = CUSTODY_LEVEL == "MIN")
+```
+- This uses `mutate()` to add a new column to which is the absolute value of `min_custody`.
+- The thing on the left of the `=` is a new name that you make up which you would like the new column to be called
+- The expresssion on the right of the `=` defines what will go into the new column
+- **Warning!** If the new variable name already exists, `mutate()` will overwrite the existing one
+```{r, max.lines = 5}
+mutate(jail_data, GENDER = GENDER == "M")
+```
+
+mutate() can create multiple new columns at once
+================================================================
+- `mutate()` can create multiple columns at the same time and use multiple columns to define a single new one
+
+```{r, tidy=F}
+mutate(jail_data, # the newlines make it more readable
+      min_custody = CUSTODY_LEVEL == "MIN",
+      GENDER = GENDER == "M",
+      days_incarcerated = today() - ADMITTED_DT + 1
+)
+```
+
+mutate() for data type conversion
+===
+- Data is sometimes given to you in a form that makes it difficult to do operations on
+```{r}
+df = tibble(number = c("1", "2", "3"))
+df
+mutate(df, number_plus_1 = number + 1)
+```
+
+- `mutate()` is also useful for converting data types, in this case text to numbers
+```{r}
+mutate(df, number = as.numeric(number))
+```
+- If you save the result into a column that already exists, it will be overwritten
+
+Piping
+===
+type:section
+
+Why pipe?
+===
+
+Exercise: Combine it together
+===
+type:prompt
+
+- Select individuals who are under 65
+- Calculate the number of weeks they've been incarcerated
+- Display weeks incarcerated, race or ethnic group, age, gender, and custody level for the people with 10 longest lengths of incarceration.
+
+Exercise: Combine it together
+===
+type:prompt
+
+- Select individuals who are under 65
+- Calculate the number of weeks they've been incarcerated
+- Display weeks incarcerated, race or ethnic group, age, gender, and custody level for the people with 10 longest lengths of incarceration.
+
+```{r}
+library(lubridate)
+personsUnder65 = filter(jail_data, AGE < 65)
+weeksIncarcerated = mutate(personsUnder65, weeks_incarcerated = as.numeric(today() - ADMITTED_DT + 1) / 7)
+sortedData = select(arrange(weeksIncarcerated, desc(weeks_incarcerated)),
+                    weeks_incarcerated, RACE, GENDER, CUSTODY_LEVEL)
+filter(sortedData, row_number() <= 10)
+```
+- 
+
+Why pipe?
+===
+
+- In our last exercise, we used a number of different function applications to arrive at our answer. Shown below, we used temporary variables to keep our code clean. 
+
+```{r, eval=F, tidy=F}
+personsUnder65 = filter(jail_data, AGE < 65)
+weeksIncarcerated = mutate(personsUnder65, weeks_incarcerated = as.numeric(today() - ADMITTED_DT + 1) / 7)
+sortedData = select(arrange(weeksIncarcerated, desc(weeks_incarcerated)),
+                    weeks_incarcerated, RACE, GENDER, CUSTODY_LEVEL)
+filter(sortedData, row_number() <= 10)
+```
+
+- Compare that to the same code using nested calls (instead of storing in temporary variables):
+
+```{r, eval=F, tidy=F}
+filter(
+  select(
+    arrange(
+      mutate(
+        filter(
+          jail_data, AGE < 65
+          ),
+        weeks_incarcerated = as.numeric(today() - ADMITTED_DT + 1) / 7
+        ), desc(weeks_incarcerated)),
+    weeks_incarcerated, RACE, GENDER, CUSTODY_LEVEL)
+  , row_number() <= 10
+  )
+```
+
+- What makes either of these hard to read or understand?
+
+The pipe operator
+===
+
+- Tidyverse solves these problems with the pipe operator `%>%`
+
+```{r, eval=F, tidy=F}
+jail_data %>%
+  filter(AGE < 65) %>%
+  mutate(weeks_incarcerated = as.numeric(today() - ADMITTED_DT + 1) / 7) %>%
+  arrange(desc(weeks_incarcerated)) %>%
+  select(weeks_incarcerated, RACE, GENDER, CUSTODY_LEVEL) %>%
+  filter(row_number() <= 10)
+```
+
+
+The pipe operator
+===
+
+- Tidyverse solves these problems with the pipe operator `%>%`
+
+```{r, eval=F, tidy=F}
+jail_data %>%
+  filter(AGE < 65) %>%
+  mutate(weeks_incarcerated = as.numeric(today() - ADMITTED_DT + 1) / 7) %>%
+  arrange(desc(weeks_incarcerated)) %>%
+  select(weeks_incarcerated, RACE, GENDER, CUSTODY_LEVEL) %>%
+  filter(row_number() <= 10)
+```
+
+- How does this compare with our code before? What do you notice?
+
+```{r, eval=F, tidy=F}
+personsUnder65 = filter(jail_data, AGE < 65)
+weeksIncarcerated = mutate(personsUnder65, weeks_incarcerated = as.numeric(today() - ADMITTED_DT + 1) / 7)
+sortedData = select(arrange(weeksIncarcerated, desc(weeks_incarcerated)),
+                    weeks_incarcerated, RACE, GENDER, CUSTODY_LEVEL)
+filter(sortedData, row_number() <= 10)
+```
+
+
+Pipe details: What happens to an object when it gets "piped in"?
+=================================================================
+
+When `df1` is piped into `fun(x)` (`fun` is just some fake function)
+
+```{r eval=FALSE}
+df1 %>% fun(x)
+```
+
+is converted into:
+
+```{r eval=FALSE}
+fun(df1, x)
+```
+
+- That is: the thing being piped in is used as the _first_ argument of `fun`.
+- The tidyverse functions are consistently designed so that the first argument is a data frame, and the result is a data frame, so you can push a dataframe all the way through a series of functions
+
+Pipe details: What objects can be piped?
+=================================================================
+- The pipe works for all variables and functions (not just tidyverse functions)
+
+Piping with an array
+
+```{r}
+c(1,44,21,0,-4) %>%
+    sum() # instead of sum(c(1,44,21,0,-4))
+```
+
+Piping with a scalar
+
+```{r}
+1 %>% `+`(1) # `+` is just a function that takes two arguments!
+```
+
+Piping with a data frame
+
+```{r}
+data.frame(name = c("Petunia", "Rose", "Daisy", "Marigold", "Arabidopsis"),
+           age = c(10,54,21,99,96)) %>%
+    filter(age > 30) 
+```
+
+Piping to another position
+===
+- The pipe typically pipes into the first argument of a function, but you can use `.` to represent the object you're piping into the function
+```{r}
+# install.packages("slider")
+library(slider)
+mean %>%
+  slide_vec(1:10, ., .before=2)
+```
+- Also notice how I've piped in a *function* to a function! (yes, functions are just objects like anything else in R)
+- More about this in the functional programming section
+
+Grouped summaries with summarise()
+===
+type:section
+
+Grouped summaries with summarise()
+================================================================
+```{r}
+jail_data <- jail_data %>% mutate(weeks_incarcerated = as.numeric(today() - ADMITTED_DT + 1) / 7)
+summarize(jail_data, weeks_mean=mean(weeks_incarcerated))
+```
+- `summarize()` boils down the data frame according to the conditions it gets. In this case, it creates a data frame with a single column called `weeks_mean` that contains the mean of the `weeks_incarcerated` column
+- As with `mutate()`, the name on the left of the `=` is something you make up that you would like the new column to be named.
+- `mutate()` transforms columns into new columns of the same length, but `summarize()` collapses down the data frame into a single row
+- Summaries are more useful when you apply them to subgoups of the data, which we will soon see how to do.
+
+Grouped summaries with summarise()
+================================================================
+- note that you can also pass in multiple conditions that operate on multiple columns at the same time
+```{r, tidy=F}
+jail_data %>% 
+  summarize( # newlines not necessary, again just increase clarity
+    weeks_mean = mean(weeks_incarcerated),
+    weeks_median = median(weeks_incarcerated),
+    weeks_max = max(weeks_incarcerated),
+    age_mean = mean(AGE, na.rm=T),
+    age_median = median(AGE, na.rm=T),
+    age_max = max(AGE, na.rm=T)
+  )
+```
+
+Grouped summaries with summarise()
+==================================================================
+- Summaries are more useful when you apply them to subgoups of the data
+
+```{r, tidy=F, message=F}
+jail_data %>% 
+  group_by(RACE) %>%
+  summarize( # newlines not necessary, again just increase clarity
+    weeks_mean = mean(weeks_incarcerated),
+    age_mean = mean(AGE, na.rm=T),
+  )
+```
+
+
+- `group_by()` is a helper function that "groups" the data according to the unique values in the column(s) it gets passed. 
+- Its output is a grouped data frame that looks the same as the original except for some additional metadata that subsequent functions can use
+- `summarize()` works the same as before, except now it returns as many rows as there are groups in the data
+- The result also always contains colunmns corresponding to the unique values of the grouping variable
+
+Multiple columns can be used to group the data simultaneously
+===================================================================
+
+```{r, tidy=F, message=F}
+jail_data %>% 
+  group_by(RACE, GENDER) %>%
+  summarize( # newlines not necessary, again just increase clarity
+    weeks_mean = mean(weeks_incarcerated),
+    age_mean = mean(AGE, na.rm=T),
+  )
+```
+
+- The result has the summary value for each unique combination of the grouping variables
+
+Computing the number of rows in each group
+=====================================================================
+- The `n()` function counts the number of rows in each group:
+
+```{r, tidy=F, message=F}
+jail_data %>% 
+  group_by(RACE, GENDER) %>%
+  summarize(
+    count = n()
+  )
+```
+- You can also use `count()`, which is just a shorthand for the same thing
+
+```{r, tidy=F, message=F, eval=F}
+jail_data %>% 
+  group_by(RACE, GENDER) %>%
+  count()
+```
+
+Exercise: summarise stats for length of incarceration and age
+=====================================================================
+type:prompt
+
+- What is the min, mean, median, max for weeks incarcerated by race or ethnic group?
+- How many people are there per race or ethnic group?
+
+Exercise: summarise stats for length of incarceration and age
+=====================================================================
+type:prompt
+
+- What is the min, mean, median, max for weeks incarcerated by race or ethnic group?
+- How many people are there per race or ethnic group?
+
+```{r, tidy=F, message=F}
+jail_data %>% 
+  group_by(RACE) %>%
+  summarize( # newlines not necessary, again just increase clarity
+    weeks_min = min(weeks_incarcerated),
+    weeks_mean = mean(weeks_incarcerated),
+    weeks_median = median(weeks_incarcerated),
+    weeks_max = max(weeks_incarcerated),
+    count = n()
+  )
+```
+
+
+Grouped mutates and filters
+===
+type:section
+
+Filtering grouped data
+===
+
+- `filter()` is aware of grouping. When used on a grouped dataset, it applies the filtering condition separately in each group
+
+```{r, tidy=F}
+jail_data %>% 
+  group_by(RACE) %>%
+  filter(AGE == min(AGE))
+```
+
+- Why do we get back multiple rows per `class`?
+- This is an extremely convenient idiom for finding the rows that minimize or maximize a condition
+
+Mutating grouped data
+===
+
+- `mutate()` is aware of grouping. When used on a grouped dataset, it applies the mutation separately in each group
+
+```{r, tidy=F, message=F}
+jail_data %>%
+  group_by(RACE) %>%
+  mutate(weeks_from_mean = weeks_incarcerated - mean(weeks_incarcerated)) %>%
+  select(RACE, GENDER, AGE, weeks_from_mean)
+```
+
+- As always, mutate does not change the number of rows in the dataset
+
+Combining multiple tables with joins
+===
+type:section
+
+
+
+
+Relational data
+=====================================================================
+incremental: true
+
+- Relational data are interconnected data that is spread across multiple tables, each of which usually has a different unit of observation
+- When we get an expression dataset, the data is usually divided into an expression matrix with the expression values of each sample, and table(s) with metadata about the samples themselves. 
+- For the Incarceration dataset, we simulated each person's zip code and will combine it with Covid-19 cases within that zip code. 
+
+```{r, message=FALSE}
+covid_cases <- read_csv("https://raw.githubusercontent.com/nychealth/coronavirus-data/master/latest/hosp_death_last28days-by-modzcta.csv")
+glimpse(covid_cases)
+```
+- The sample data has information about the Covid-19 hospitalization and death counts and rates by zip code (modzcta).
+
+An example join
+===
+- Imagine we want to add subject information to the sample data
+- We can accomplish that with a **join**:
+```{r, tidy=F}
+jail_data %>% 
+  inner_join(covid_cases, by=c("zipcode" = "modzcta"))
+```
+
+Joins
+===
+```{r, tidy=F}
+x = tibble(
+  key = c(1,2,3),
+  val_x = c("x1","x2","x3")
+)
+y = tibble(
+  key = c(1,2,4),
+  val_y = c("y1","y2","y3")
+)
+```
+
+<div align="center">
+<img src="https://d33wubrfki0l68.cloudfront.net/108c0749d084c03103f8e1e8276c20e06357b124/5f113/diagrams/join-setup.png">
+</div>
+
+***
+
+```{r}
+inner_join(x, y, by="key")
+```
+- An inner join matches pairs of observations when their "keys" are equal
+- the column that is joined on is specified as a "key" with the argument `by="column"`
+
+<div align="center">
+<img src="https://d33wubrfki0l68.cloudfront.net/3abea0b730526c3f053a3838953c35a0ccbe8980/7f29b/diagrams/join-inner.png">
+</div>
+
+Duplicate keys
+===
+```{r}
+x = tibble(
+  key = c(1,2,2,3),
+  val_x = c("x1","x2","x3","x4")
+)
+y = tibble(
+  key = c(1,2,2,4),
+  val_y = c("y1","y2","y3","y4")
+)
+```
+
+<div align="center">
+<img src="https://d33wubrfki0l68.cloudfront.net/d37530bbf7749f48c02684013ae72b2996b07e25/37510/diagrams/join-many-to-many.png">
+</div>
+
+***
+
+```{r}
+inner_join(x, y, by="key")
+```
+
+When keys are duplicated, multiple rows can match multiple rows, so each possible combination is produced
+
+Specifying the keys
+===
+```{r}
+jail_data %>% 
+  inner_join(covid_cases, by="zipcode"))
+```
+- Why does this fail?
+
+Specifying the keys
+===
+- When keys have different names in different dataframes, the syntax to join is:
+```{r}
+head(jail_data,2)
+head(covid_cases,2)
+
+jail_data %>% 
+  inner_join(covid_cases, by=c("zipcode" = "modzcta"))
+```
+Note that the first key (`zipcode`) corresponds to the first data frame (`jail_data`) and the second key (`modzcta`) corresponds to the second data frame (`covid_cases`).
+
+
+Exercise: finding mean Covid-19 hospitalization and death rates in neighborhoods where people are from
+===
+- Join zip code of each incarcerated person with Covid-19 outcomes data.
+- Calculate the mean rates and counts by race or ethnic group, gender, and security level.
+```{r}
+jail_zip_codes <- jail_data %>% 
+                    inner_join(covid_cases, by=c("zipcode" = "modzcta"))
+
+jail_zip_codes %>% group_by(RACE) %>%
+                      summarise(hosp_rate_mean = mean(hospitalization_rate_28day, na.rm = TRUE),
+                                death_rate_mean = mean(death_rate_28day, na.rm = TRUE),
+                                count = n())
+
+jail_zip_codes %>% group_by(GENDER) %>%
+                      summarise(hosp_rate_mean = mean(hospitalization_rate_28day, na.rm = TRUE),
+                                death_rate_mean = mean(death_rate_28day, na.rm = TRUE),
+                                count = n())
+
+jail_zip_codes %>% group_by(CUSTODY_LEVEL) %>%
+                      summarise(hosp_rate_mean = mean(hospitalization_rate_28day, na.rm = TRUE),
+                                death_rate_mean = mean(death_rate_28day, na.rm = TRUE),
+                                count = n())
+```
+Note that these are simulated zip codes so the Covid-19 hospitalization and death rates are not reflective of the actual population.
+
+Other joins
+===
+
+<div align="center">
+<img src="https://d33wubrfki0l68.cloudfront.net/9c12ca9e12ed26a7c5d2aa08e36d2ac4fb593f1e/79980/diagrams/join-outer.png">
+</div>
+
+***
+
+- A left join keeps all observations in `x`.
+- A right join keeps all observations in `y`.
+- A full join keeps all observations in `x` and `y`.
+
+<div align="center">
+<img src="https://d33wubrfki0l68.cloudfront.net/aeab386461820b029b7e7606ccff1286f623bae1/ef0d4/diagrams/join-venn.png">
+</div>
+
+- Left join should be your default
+  - it looks up additional information in other tables
+  - preserves all rows in the table you're most interested in
+
+Join problems
+===
+- Joins can be a source of subtle errors in your code
+- check for `NA`s in variables you are going to join on
+- make sure rows aren't being dropped if you don't intend to drop rows
+  - checking the number of rows before and after the join is not sufficient. If you have an inner join with duplicate keys in both tables, you might get unlucky as the number of dropped rows might exactly equal the number of duplicated rows
+- `anti_join()` and `semi_join()` are useful tools (filtering joins) to diagnose problems
+  - `anti_join()` keeps only the rows in `x` that *don't* have a match in `y`
+  - `semi_join()` keeps only the rows in `x` that *do* have a match in `y`
+
+Additional resources:
+====
+- R cheatsheets: https://www.rstudio.com/resources/cheatsheets/
+- Data science in R resources:
+    - R for Data Science by Hadley Wickman & Garrett Grolemund: https://r4ds.had.co.nz/
+    - Lectures from the R for Data Science course by Alejandro Schuler: https://github.com/alejandroschuler/r4ds-courses/tree/advance-2021
+- A few open source public health datasets:
+    - Census data from the American Community Survey: https://www.census.gov/programs-surveys/acs/data.html (tip: try using the `acs` package in R)
+    - U.S. Department of Health & Human Services data: https://healthdata.gov/
+    - National Center for Health Statistics data: https://www.cdc.gov/nchs/data_access/ftp_data.htm
+    - US County health rankings data: https://www.countyhealthrankings.org/explore-health-rankings/use-data
+    - California Health & Human Resources data: https://data.chhs.ca.gov/
+    - NYC data: https://opendata.cityofnewyork.us/data/
+- Plotting maps in R: https://ggplot2-book.org/maps.html
+
+Questions? Feel free to email me at `etchin@stanford.edu`
+
+
+============================================================
+<div align="center">
+<img src="https://miro.medium.com/max/1200/1*O4LZwd_rTEGY2zMyDkvR9A.png"; style="max-width:1500;"; class="center">
+</div>
+
+<!-- ^^  COMPLETE   ^^ -->
